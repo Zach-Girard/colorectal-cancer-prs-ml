@@ -1,0 +1,6 @@
+model,auc_mean,auc_std
+PRS only,0.6640474119362427,0.04138840268273232
+PRS + covariates (LR),0.6743634224740698,0.0500150495326942
+PRS + covariates (GB),0.6409512625509494,0.06050855519668149
+
+# Odds ratio per 1-SD PRS increase (PRS+covariates LR): 1.864

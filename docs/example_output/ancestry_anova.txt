@@ -1,0 +1,4 @@
+One-way ANOVA: mean PRS (PGS000055, colorectal cancer) across 1000 Genomes super-populations
+F = 74.450, p = 1.078e-59
+
+PGS000055 was trained on African American + European ancestry GWAS. A significant difference in mean PRS across all five 1000 Genomes super-populations is expected here purely from allele-frequency differences at the scored SNPs, and is a textbook illustration of why polygenic scores generally do not transfer across ancestries without recalibration -- it is not evidence of a real difference in colorectal cancer risk.

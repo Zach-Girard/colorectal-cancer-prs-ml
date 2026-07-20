@@ -1,0 +1,15 @@
+name: prs-cancer-ml
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - htslib      # tabix, for remote-indexed VCF slicing
+  - bcftools
+  - samtools
+  - pandas
+  - numpy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - scipy

@@ -1,0 +1,15 @@
+# Downloaded/generated at pipeline run time, never committed.
+# (docs/example_output/ holds a small, curated, committed copy of these
+# outputs for the README and is intentionally not matched here.)
+data/
+figures/
+results/
+
+# OS / editor cruft
+.DS_Store
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+
+# tabix caches the remote .tbi index of whatever it queries in the cwd
+*.vcf.gz.tbi

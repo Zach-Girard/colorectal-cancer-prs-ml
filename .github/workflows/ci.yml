@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: prs-cancer-ml
+          environment-file: environment.yml
+          auto-activate-base: false
+
+      - name: Run full pipeline
+        shell: bash -el {0}
+        run: bash scripts/run_all.sh
+
+      - name: Verify expected outputs were produced
+        shell: bash -el {0}
+        run: |
+          test -s results/prs_scores.csv
+          test -s results/simulated_cohort.csv
+          test -s results/model_performance.csv
+          test -s results/prs_decile_odds_ratios.csv
+          for f in 07_prs_by_superpopulation 08_roc_curves 09_calibration_curve 10_risk_decile_stratification; do
+            test -s "figures/${f}.png"
+          done
+          n_variants=$(python3 -c "
+import pandas as pd
+df = pd.read_csv('results/prs_scores.csv')
+print(int(df['n_variants_used'].iloc[0]))
+")
+          echo "PRS computed from ${n_variants} variants"
+          if [ "${n_variants}" -lt 70 ]; then
+            echo "Expected close to all 76 PGS000055 variants to match; got ${n_variants}"
+            exit 1
+          fi
+
+      - name: Upload figures + tables as build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prs-pipeline-output
+          path: |
+            figures/
+            results/*.csv
+          retention-days: 14
