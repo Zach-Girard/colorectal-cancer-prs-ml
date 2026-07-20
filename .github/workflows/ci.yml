@@ -34,11 +34,7 @@ jobs:
           for f in 07_prs_by_superpopulation 08_roc_curves 09_calibration_curve 10_risk_decile_stratification; do
             test -s "figures/${f}.png"
           done
-          n_variants=$(python3 -c "
-import pandas as pd
-df = pd.read_csv('results/prs_scores.csv')
-print(int(df['n_variants_used'].iloc[0]))
-")
+          n_variants=$(python3 -c "import pandas as pd; print(int(pd.read_csv('results/prs_scores.csv')['n_variants_used'].iloc[0]))")
           echo "PRS computed from ${n_variants} variants"
           if [ "${n_variants}" -lt 70 ]; then
             echo "Expected close to all 76 PGS000055 variants to match; got ${n_variants}"
