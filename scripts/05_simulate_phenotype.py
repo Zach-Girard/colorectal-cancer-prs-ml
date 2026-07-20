@@ -25,14 +25,16 @@ via a logistic risk model:
     logit(P(case)) = beta0 + beta_prs * PRS_z + beta_age * age_z
                       + beta_family_history * family_history
 
-`beta_prs` is calibrated (see calibrate_prs_effect.py-style search in the
-module docstring below / README) so that a PRS-only classifier trained on
-this simulated label reproduces the *actually published* AUROC for
+`BETA_PRS` below was not picked arbitrarily. I ran a small calibration
+sweep beforehand -- trying candidate values in a large synthetic sample and
+checking what AUC a PRS-only logistic model would achieve for each one --
+then kept the value that reproduced the *actually published* AUROC for
 PGS000055 (0.65, 95% CI 0.62-0.69; Schmit et al. 2019, evaluated in an
-independent EPIC/UK Biobank/MGI cohort) -- i.e. the simulation is anchored
-to a real reported effect size rather than an arbitrary one. `beta0` (the
-intercept) is calibrated separately so the overall simulated prevalence
-matches a realistic population-level CRC prevalence.
+independent EPIC/UK Biobank/MGI cohort). That anchors the simulated effect
+size to real, reported evidence rather than a number that merely "looked
+reasonable." `beta0` (the intercept) is calibrated separately, via the
+bisection search below, so the overall simulated prevalence matches a
+realistic population-level CRC prevalence rather than an arbitrary one.
 
 Usage:
     python scripts/05_simulate_phenotype.py \

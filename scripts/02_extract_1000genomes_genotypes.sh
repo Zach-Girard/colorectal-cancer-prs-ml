@@ -53,4 +53,10 @@ done
 
 n_variants_found=$(grep -vc '^#' "${VCF_SLICE}")
 n_variants_total=$(gzip -dc "${PGS_WEIGHTS}" | grep -v '^#' | tail -n +2 | wc -l | tr -d ' ')
-echo "Extracted ${n_variants_found} / ${n_variants_total} scored variants to ${VCF_SLICE}"
+echo "Extracted ${n_variants_found} VCF records / ${n_variants_total} scored variant positions to ${VCF_SLICE}"
+# It's normal for the VCF record count to come out slightly *higher* than
+# the scored variant count: a handful of these positions are multi-allelic
+# in 1000 Genomes (more than one alternate allele observed there), so tabix
+# returns more than one record for that position. scripts/03_compute_prs.py
+# is the step that actually figures out which record (if any) matches the
+# PGS SNP's effect/other allele.

@@ -18,6 +18,17 @@ which is exactly what tools like PLINK --score or PRSice compute -- there's
 no shortcut or approximation here, just the standard weighted-sum formula
 applied to real data.
 
+The part of this that wasn't obvious to me at first: a GWAS paper's
+"effect allele" for a SNP is just whichever allele the original study
+happened to model risk relative to -- it is not guaranteed to be the ALT
+allele in someone else's VCF. Silently assuming effect_allele == ALT would
+silently flip the sign of that SNP's contribution for any site where it
+isn't, which would bias the whole score without throwing an error.
+match_dosage() below checks REF/ALT against effect/other allele explicitly
+and flips the dosage (2 - ALT_count) when the effect allele turns out to
+be REF instead, and reports/skips anything that doesn't match either way
+so that's visible rather than silent.
+
 Usage:
     python scripts/03_compute_prs.py \
         --weights data/pgs_catalog/PGS000055_hmPOS_GRCh37.txt.gz \
