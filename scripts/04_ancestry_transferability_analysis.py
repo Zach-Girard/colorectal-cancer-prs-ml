@@ -43,35 +43,29 @@ SUPER_POP_LABELS = {
 }
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--prs", required=True)
-    parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--figures-dir", required=True)
-    args = parser.parse_args()
-
-    os.makedirs(args.output_dir, exist_ok=True)
-    os.makedirs(args.figures_dir, exist_ok=True)
-
-    df = pd.read_csv(args.prs)
-
-    # Summary stats per super-population, ordered for readability.
-    summary = (
+def summarize_prs_by_superpopulation(df: pd.DataFrame) -> pd.DataFrame:
+    """Return count/mean/std/min/max of prs_raw grouped by super_pop."""
+    return (
         df.groupby("super_pop")["prs_raw"]
         .agg(["count", "mean", "std", "min", "max"])
         .reindex(SUPER_POP_ORDER)
         .round(4)
     )
-    summary.to_csv(os.path.join(args.output_dir, "prs_by_superpopulation.csv"))
-    print(summary)
 
-    # One-way ANOVA across all 5 super-populations: is mean PRS the same
-    # across ancestries? (It should not be, given known allele-frequency
-    # differences at these SNPs -- see the *_AF columns already present in
-    # the 1000 Genomes VCF for a sanity check on any individual variant.)
+
+def run_ancestry_anova(df: pd.DataFrame):
+    """One-way ANOVA of mean prs_raw across the five super-populations.
+
+    Returns (f_statistic, p_value). A significant difference is expected from
+    allele-frequency differences at the scored SNPs, not true CRC risk.
+    """
     groups = [df.loc[df["super_pop"] == sp, "prs_raw"] for sp in SUPER_POP_ORDER]
-    f_stat, p_value = stats.f_oneway(*groups)
-    with open(os.path.join(args.output_dir, "ancestry_anova.txt"), "w") as fh:
+    return stats.f_oneway(*groups)
+
+
+def write_anova_report(path: str, f_stat: float, p_value: float) -> None:
+    """Write ANOVA F/p and a short interpretation note to ``path``."""
+    with open(path, "w") as fh:
         fh.write(
             "One-way ANOVA: mean PRS (PGS000055, colorectal cancer) across "
             "1000 Genomes super-populations\n"
@@ -84,24 +78,51 @@ def main():
             "transfer across ancestries without recalibration -- it is not "
             "evidence of a real difference in colorectal cancer risk.\n"
         )
-    print(f"\nANOVA: F={f_stat:.3f}, p={p_value:.3e}")
 
-    # Figure: PRS distribution per super-population.
-    plt.figure(figsize=(8, 5))
+
+def plot_prs_by_superpopulation(df: pd.DataFrame, figures_dir: str) -> str:
+    """Save box+strip plot of prs_raw by super_pop; return the figure path."""
     order = [sp for sp in SUPER_POP_ORDER if sp in df["super_pop"].unique()]
-    sns.boxplot(data=df, x="super_pop", y="prs_raw", hue="super_pop", order=order, palette="Set2", legend=False)
+    plt.figure(figsize=(8, 5))
+    sns.boxplot(
+        data=df, x="super_pop", y="prs_raw", hue="super_pop",
+        order=order, palette="Set2", legend=False,
+    )
     sns.stripplot(data=df, x="super_pop", y="prs_raw", order=order, color="black", alpha=0.15, size=2)
     plt.xlabel("1000 Genomes super-population")
     plt.ylabel("Colorectal cancer PRS (PGS000055, raw)")
     plt.title("A Euro/African-American-derived CRC PRS does not transfer evenly across ancestries")
-    plt.xticks(
-        range(len(order)),
-        [f"{sp}\n({SUPER_POP_LABELS[sp]})" for sp in order],
-    )
+    plt.xticks(range(len(order)), [f"{sp}\n({SUPER_POP_LABELS[sp]})" for sp in order])
     plt.tight_layout()
-    plt.savefig(os.path.join(args.figures_dir, "07_prs_by_superpopulation.png"), dpi=150)
+    out_path = os.path.join(figures_dir, "07_prs_by_superpopulation.png")
+    plt.savefig(out_path, dpi=150)
     plt.close()
-    print(f"Wrote figure: {os.path.join(args.figures_dir, '07_prs_by_superpopulation.png')}")
+    return out_path
+
+
+def main():
+    """Summarize PRS by ancestry, run ANOVA, and write figure 07."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--prs", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--figures-dir", required=True)
+    args = parser.parse_args()
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(args.figures_dir, exist_ok=True)
+
+    df = pd.read_csv(args.prs)
+
+    summary = summarize_prs_by_superpopulation(df)
+    summary.to_csv(os.path.join(args.output_dir, "prs_by_superpopulation.csv"))
+    print(summary)
+
+    f_stat, p_value = run_ancestry_anova(df)
+    write_anova_report(os.path.join(args.output_dir, "ancestry_anova.txt"), f_stat, p_value)
+    print(f"\nANOVA: F={f_stat:.3f}, p={p_value:.3e}")
+
+    fig_path = plot_prs_by_superpopulation(df, args.figures_dir)
+    print(f"Wrote figure: {fig_path}")
 
 
 if __name__ == "__main__":

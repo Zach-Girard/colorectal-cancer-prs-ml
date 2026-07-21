@@ -60,14 +60,18 @@ BETA_FAMILY_HISTORY = 0.65
 
 
 def sigmoid(x):
+    """Logistic transform: map log-odds ``x`` to probability in (0, 1)."""
     return 1 / (1 + np.exp(-x))
 
 
 def calibrate_intercept(linear_predictor: np.ndarray, target_prevalence: float) -> float:
-    """Bisection search for the intercept that makes mean(P(case)) equal
-    to the target prevalence, given everyone's linear predictor without
-    the intercept term."""
+    """Bisection search for intercept so mean(sigmoid(intercept + lp)) == target.
+
+    ``linear_predictor`` holds each sample's covariate contribution without
+    the intercept. Returns the calibrated intercept.
+    """
     lo, hi = -15.0, 15.0
+    mid = 0.0
     for _ in range(100):
         mid = (lo + hi) / 2
         mean_p = sigmoid(mid + linear_predictor).mean()
@@ -79,6 +83,7 @@ def calibrate_intercept(linear_predictor: np.ndarray, target_prevalence: float) 
 
 
 def main():
+    """Simulate age/family history and case labels; write ML-ready cohort CSV."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prs", required=True)
     parser.add_argument("--output", required=True)
@@ -97,6 +102,7 @@ def main():
     df["family_history"] = rng.binomial(1, 0.10, n)
     df["sex"] = df["gender"]  # real 1000 Genomes attribute, not simulated
 
+    # Log-odds without intercept; intercept is calibrated to hit --prevalence.
     linear_predictor = (
         BETA_PRS * df["prs_z"]
         + BETA_AGE * df["age_z"]

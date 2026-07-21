@@ -46,7 +46,10 @@ import pandas as pd
 
 
 def load_pgs_weights(path: str) -> pd.DataFrame:
-    """Parse a PGS Catalog harmonized scoring file into a tidy DataFrame."""
+    """Load a PGS Catalog scoring file; strip '#' metadata; return SNP weight table.
+
+    Returns columns: rsID, chrom, pos, effect_allele, other_allele, effect_weight.
+    """
     opener = gzip.open if path.endswith(".gz") else open
     with opener(path, "rt") as fh:
         lines = [l for l in fh if not l.startswith("#")]
@@ -59,14 +62,14 @@ def load_pgs_weights(path: str) -> pd.DataFrame:
 
 
 def load_vcf_genotypes(path: str):
-    """
-    Minimal VCF parser for the small, single-purpose slice produced by
-    scripts/02_extract_1000genomes_genotypes.sh -- no external VCF library
-    needed for ~90 lines and ~2,500 samples.
+    """Parse the scripts/02 VCF slice into ALT dosages per sample.
 
-    Returns (records, sample_ids) where records is a list of dicts with
-    chrom, pos, ref, alt, and a numpy array of ALT-allele dosages (0/1/2)
-    in sample_ids order.
+    Skips multi-allelic rows (comma in ALT). Converts genotypes (0/1 or 0|1)
+    to ALT-allele dosage 0/1/2.
+
+    Returns:
+        records: list of {chrom, pos, ref, alt, dosage} dicts
+        sample_ids: sample IDs from the VCF header, aligned with dosage arrays
     """
     records = []
     sample_ids = None
@@ -80,8 +83,7 @@ def load_vcf_genotypes(path: str):
                 continue
             chrom, pos, _id, ref, alt = fields[0], int(fields[1]), fields[2], fields[3], fields[4]
             if "," in alt:
-                # Multi-allelic site; PGS000055 only scores biallelic SNPs,
-                # so any such row can never match effect/other allele below.
+                # Multi-allelic; PGS000055 is biallelic-only — skip this row.
                 continue
             genotypes = fields[9:]
             dosage = np.array(
@@ -93,27 +95,39 @@ def load_vcf_genotypes(path: str):
 
 
 def match_dosage(record, effect_allele, other_allele):
+    """Map VCF ALT dosage onto the PGS effect-allele dosage for one SNP.
+
+    Returns the 0/1/2 effect-allele dosage array, or None if this VCF row's
+    alleles do not match the scoring-file alleles (e.g. wrong ALT at a
+    multi-allelic site).
     """
-    Return the effect-allele dosage array for one PGS SNP given a matching
-    VCF record, accounting for the fact that the effect allele isn't
-    necessarily the ALT allele. Returns None if alleles don't correspond
-    to this record at all (e.g. a different SNP happens to share a
-    position, as multi-allelic sites in 1000 Genomes sometimes do).
-    """
+    # Effect allele == ALT: use stored ALT dosage as-is.
     if record["ref"] == other_allele and record["alt"] == effect_allele:
         return record["dosage"]
+    # Effect allele == REF: flip dosage (diploid: REF count = 2 - ALT count).
     if record["ref"] == effect_allele and record["alt"] == other_allele:
         return 2 - record["dosage"]
     return None
 
 
 def compute_prs(weights: pd.DataFrame, vcf_records, sample_ids):
+    """Compute PRS_i = sum_j (effect_allele_dosage_ij * weight_j) for all samples.
+
+    For each scored SNP, finds a matching VCF row at (chrom, pos), resolves
+    effect-allele dosage via match_dosage(), and accumulates the weighted sum.
+    Unmatched SNPs are skipped and returned in the dropped_* lists.
+
+    Returns:
+        prs: raw PRS array (length = n samples)
+        used: rsIDs included in the score
+        dropped_no_record: rsIDs with no genotype at that position
+        dropped_allele_mismatch: rsIDs with position hit but allele mismatch
+    """
     n_samples = len(sample_ids)
     prs = np.zeros(n_samples, dtype=float)
     used, dropped_no_record, dropped_allele_mismatch = [], [], []
 
-    # Index VCF records by (chrom, pos) -- a handful of positions have more
-    # than one record (multi-allelic sites), so keep a list per key.
+    # Index by (chrom, pos); multi-allelic sites may have multiple records.
     by_pos = {}
     for rec in vcf_records:
         by_pos.setdefault((rec["chrom"], rec["pos"]), []).append(rec)
@@ -142,6 +156,7 @@ def compute_prs(weights: pd.DataFrame, vcf_records, sample_ids):
 
 
 def main():
+    """Load weights + genotypes, compute PRS, merge ancestry panel, write CSV."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", required=True, help="PGS Catalog harmonized scoring file")
     parser.add_argument("--vcf", required=True, help="Extracted 1000 Genomes VCF slice")
@@ -172,6 +187,7 @@ def main():
     panel = panel.rename(columns={"sample": "sample_id"})
 
     out = pd.DataFrame({"sample_id": sample_ids, "prs_raw": prs})
+    # Cohort-standardized PRS (mean 0, SD 1) for downstream models.
     out["prs_z"] = (out["prs_raw"] - out["prs_raw"].mean()) / out["prs_raw"].std()
     out["n_variants_used"] = len(used)
     out = out.merge(panel[["sample_id", "pop", "super_pop", "gender"]], on="sample_id", how="left")

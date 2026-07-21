@@ -45,6 +45,11 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict, cross_va
 
 
 def evaluate_model(model, X, y, cv, model_name):
+    """Run stratified CV: return per-fold AUCs and out-of-fold P(case).
+
+    Uses cross_val_score for fold AUCs and cross_val_predict for oof
+    probabilities (ROC / calibration plots).
+    """
     aucs = cross_val_score(model, X, y, cv=cv, scoring="roc_auc")
     oof_proba = cross_val_predict(model, X, y, cv=cv, method="predict_proba")[:, 1]
     print(f"{model_name}: AUC = {aucs.mean():.3f} +/- {aucs.std():.3f} (5-fold CV)")
@@ -52,12 +57,17 @@ def evaluate_model(model, X, y, cv, model_name):
 
 
 def odds_ratio_per_sd(model, feature_names, feature="prs_z"):
+    """Return exp(coef) for ``feature`` from a fitted logistic regression.
+
+    For z-scored features this is the OR per 1 SD increase.
+    """
     idx = feature_names.index(feature)
     beta = model.coef_[0][idx]
     return np.exp(beta)
 
 
 def main():
+    """Train/evaluate models; write metrics and figures 08–10."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cohort", required=True)
     parser.add_argument("--output-dir", required=True)
@@ -97,9 +107,7 @@ def main():
         gb_full, df[feature_sets["PRS + covariates (LR)"]].values, y, cv, "Gradient boosting, PRS + covariates"
     )
 
-    # Refit the full-covariate logistic model on all data purely to report
-    # an interpretable odds ratio per 1-SD increase in PRS (not used for
-    # any of the cross-validated performance numbers above).
+    # Full-data refit for an interpretable OR only — not used for CV AUC.
     lr_full_fit = LogisticRegression().fit(df[feature_sets["PRS + covariates (LR)"]].values, y)
     or_per_sd = odds_ratio_per_sd(lr_full_fit, feature_sets["PRS + covariates (LR)"], "prs_z")
 
@@ -114,7 +122,7 @@ def main():
     with open(os.path.join(args.output_dir, "model_performance.csv"), "a") as fh:
         fh.write(f"\n# Odds ratio per 1-SD PRS increase (PRS+covariates LR): {or_per_sd:.3f}\n")
 
-    # --- Figure: ROC curves ---------------------------------------------
+    # --- Figure: ROC curves (out-of-fold predictions) -------------------
     plt.figure(figsize=(6, 6))
     for name, (aucs, oof_proba) in results.items():
         fpr, tpr, _ = roc_curve(y, oof_proba)
@@ -128,7 +136,7 @@ def main():
     plt.savefig(os.path.join(args.figures_dir, "08_roc_curves.png"), dpi=150)
     plt.close()
 
-    # --- Figure: calibration curve (best model) --------------------------
+    # --- Figure: calibration curve (highest-AUC model) ------------------
     best_name = metrics_df.loc[metrics_df["auc_mean"].idxmax(), "model"]
     _, best_oof_proba = results[best_name]
     frac_pos, mean_pred = calibration_curve(y, best_oof_proba, n_bins=10, strategy="quantile")
@@ -143,7 +151,7 @@ def main():
     plt.savefig(os.path.join(args.figures_dir, "09_calibration_curve.png"), dpi=150)
     plt.close()
 
-    # --- Figure: risk-decile stratification (classic PRS validation plot) ---
+    # --- Figure: case rate by PRS decile vs middle deciles ---------------
     df["prs_decile"] = pd.qcut(df["prs_z"], 10, labels=False) + 1
     decile_rates = df.groupby("prs_decile")["case"].mean()
     middle_decile_rate = decile_rates.loc[[5, 6]].mean()
@@ -152,7 +160,7 @@ def main():
     decile_or.to_csv(os.path.join(args.output_dir, "prs_decile_odds_ratios.csv"), header=["odds_ratio_vs_middle_decile"])
 
     plt.figure(figsize=(8, 5))
-    bars = plt.bar(decile_or.index.astype(str), decile_or.values, color="steelblue")
+    plt.bar(decile_or.index.astype(str), decile_or.values, color="steelblue")
     plt.axhline(1.0, color="black", linestyle="--", alpha=0.6, label="Middle-decile (5th-6th) risk")
     plt.xlabel("PRS decile (1 = lowest genetic risk, 10 = highest)")
     plt.ylabel("Relative odds of being a case vs. middle decile")
